@@ -119,7 +119,7 @@ def fetch_tiktok_data(apify_key: str, username: str) -> list:
             "profiles": [username],
             "resultsPerPage": 30,  # Ultimi 30 video
             "shouldDownloadVideos": False,
-            "shouldDownloadCovers": False,
+            "shouldDownloadCovers": False
         }
         
         # Esegui l'actor
@@ -142,38 +142,85 @@ def parse_apify_data(raw_data: list) -> pd.DataFrame:
     """
     Converte i dati grezzi di Apify in un DataFrame Pandas pulito.
     Estrae i campi rilevanti per l'analisi OFM.
+    Supporta multipli formati di risposta.
     """
     if not raw_data:
         return pd.DataFrame()
     
+    # DEBUG: Mostra struttura primo elemento per diagnosticare
+    if len(raw_data) > 0:
+        st.write("🔍 Debug - Struttura dati ricevuti (primo elemento):")
+        st.json(raw_data[0])
+    
     videos = []
     
     for item in raw_data:
-        # Gestisce sia il formato diretto che quello annidato
-        video_data = item.get("video", item)
-        author_data = item.get("author", {})
-        stats = video_data.get("stats", {})
+        # Prova diversi formati di risposta
         
-        # Estrazione campi con valori di default
+        # Formato 1: Dati diretti (item è il video)
+        if "playCount" in item or "stats" in item:
+            video_data = item
+            stats = item.get("stats", item)  # Se stats non esiste, usa item diretto
+            author_data = item.get("author", {})
+        
+        # Formato 2: Dati annidati in "video"
+        elif "video" in item:
+            video_data = item.get("video", {})
+            stats = video_data.get("stats", {})
+            author_data = item.get("author", {})
+        
+        # Formato 3: Dati in formato diverso (prova a cercare chiavi comuni)
+        else:
+            # Cerca chiavi in modo flessibile
+            video_data = item
+            stats = item
+            author_data = item.get("author", item.get("authorStats", {}))
+        
+        # Estrazione campi con gestione multipla nomi
+        def get_value(obj, keys, default=0):
+            """Cerca il valore tra più chiavi possibili"""
+            for key in keys:
+                if isinstance(obj, dict) and key in obj:
+                    val = obj[key]
+                    return val if val is not None else default
+            return default
+        
         video_info = {
-            "id": video_data.get("id", ""),
-            "text": video_data.get("desc", ""),
-            "createTime": video_data.get("createTime", 0),
-            "createDate": datetime.fromtimestamp(video_data.get("createTime", 0)).strftime("%Y-%m-%d %H:%M") if video_data.get("createTime") else "",
-            "duration": video_data.get("video", {}).get("duration", 0),
-            "playCount": stats.get("playCount", 0),
-            "diggCount": stats.get("diggCount", 0),
-            "shareCount": stats.get("shareCount", 0),
-            "commentCount": stats.get("commentCount", 0),
-            "collectCount": stats.get("collectCount", 0),
-            "authorUsername": author_data.get("uniqueId", ""),
-            "authorNickname": author_data.get("nickname", ""),
-            "authorFollowers": author_data.get("stats", {}).get("followerCount", 0),
+            "id": get_value(video_data, ["id", "videoId", "awemeId"], ""),
+            "text": get_value(video_data, ["desc", "description", "text", "caption"], ""),
+            "createTime": get_value(video_data, ["createTime", "create_time", "createDate"], 0),
+            "createDate": "",
+            "duration": get_value(video_data.get("video", {}), ["duration"], 0) if isinstance(video_data.get("video"), dict) else 0,
+            "playCount": get_value(stats, ["playCount", "play_count", "viewCount", "views", "statsV2.playCount"], 0),
+            "diggCount": get_value(stats, ["diggCount", "digg_count", "likeCount", "likes", "statsV2.diggCount"], 0),
+            "shareCount": get_value(stats, ["shareCount", "share_count", "shares", "statsV2.shareCount"], 0),
+            "commentCount": get_value(stats, ["commentCount", "comment_count", "comments", "statsV2.commentCount"], 0),
+            "collectCount": get_value(stats, ["collectCount", "collect_count", "collects", "statsV2.collectCount"], 0),
+            "authorUsername": get_value(author_data, ["uniqueId", "unique_id", "username", "nickname"], ""),
+            "authorNickname": get_value(author_data, ["nickname", "nickName", "displayName"], ""),
+            "authorFollowers": get_value(author_data.get("stats", {}), ["followerCount", "follower_count", "followers"], 0),
         }
+        
+        # Converte createTime in data leggibile
+        if video_info["createTime"]:
+            try:
+                # Prova formato timestamp
+                if isinstance(video_info["createTime"], (int, float)) and video_info["createTime"] > 1000000000:
+                    video_info["createDate"] = datetime.fromtimestamp(video_info["createTime"]).strftime("%Y-%m-%d %H:%M")
+                # Prova formato stringa
+                elif isinstance(video_info["createTime"], str):
+                    video_info["createDate"] = video_info["createTime"]
+            except:
+                video_info["createDate"] = str(video_info["createTime"])
         
         videos.append(video_info)
     
     df = pd.DataFrame(videos)
+    
+    # DEBUG: Mostra DataFrame creato
+    st.write(f"🔍 Debug - DataFrame creato con {len(df)} righe")
+    if not df.empty:
+        st.write("Prime righe:", df.head())
     
     # Ordina per data di creazione (più recenti prima)
     if not df.empty and "createTime" in df.columns:
