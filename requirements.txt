@@ -1,0 +1,8 @@
+# TikTok OFM Strategic Analyzer - Requirements
+# Deploy: Streamlit Community Cloud
+
+streamlit>=1.28.0
+pandas>=2.0.0
+plotly>=5.15.0
+apify-client>=1.5.0
+google-generativeai>=0.3.0
