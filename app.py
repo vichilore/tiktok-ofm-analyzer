@@ -292,7 +292,7 @@ def get_gemini_analysis(df: pd.DataFrame, metrics: dict, username: str) -> str:
     try:
         # Configura Gemini
         genai.configure(api_key=st.session_state.gemini_key)
-        model = genai.GenerativeModel('gemini-3-flash')
+        model = genai.GenerativeModel('gemini-3-flash-preview')
         
         # Prepara i dati aggregati
         data_summary = {
