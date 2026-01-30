@@ -120,7 +120,6 @@ def fetch_tiktok_data(apify_key: str, username: str) -> list:
             "resultsPerPage": 30,  # Ultimi 30 video
             "shouldDownloadVideos": False,
             "shouldDownloadCovers": False,
-            "videoKvStoreIdOrName": None
         }
         
         # Esegui l'actor
